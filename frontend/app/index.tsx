@@ -1,13 +1,28 @@
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { router } from 'expo-router';
 import { useShotStore } from '../store/useShotStore';
+import { signOut } from '../services/authService';
+import { getQuotaRemaining } from '../services/authService';
 
 export default function HomeScreen() {
-  const { setGameType, setSkillLevel } = useShotStore();
+  const { user, profile, setUser, setProfile } = useShotStore();
 
   const handleStart = () => {
+    if (!user) {
+      router.push('/signin');
+      return;
+    }
     router.push('/camera');
   };
+
+  async function handleSignOut() {
+    await signOut();
+    setUser(null);
+    setProfile(null);
+  }
+
+  const quotaLeft = getQuotaRemaining(profile);
+  const isFree = profile?.subscription_tier === 'free' || !user;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -19,6 +34,29 @@ export default function HomeScreen() {
           <Text style={styles.tagline}>AI-powered shot coach</Text>
         </View>
 
+        {/* User / Quota info */}
+        {user ? (
+          <View style={styles.userBanner}>
+            <Text style={styles.userEmail}>{user.email}</Text>
+            {isFree && (
+              <Text style={styles.quotaText}>
+                {quotaLeft > 0
+                  ? `${quotaLeft} free shot${quotaLeft !== 1 ? 's' : ''} remaining today`
+                  : 'Daily shots exhausted — upgrade to Pro!'}
+              </Text>
+            )}
+            {profile?.subscription_tier !== 'free' && profile?.subscription_tier && (
+              <Text style={styles.tierBadge}>
+                {profile.subscription_tier === 'pro' ? '⭐ Pro' : '🏆 Pool Hall'}
+              </Text>
+            )}
+          </View>
+        ) : (
+          <View style={styles.userBanner}>
+            <Text style={styles.quotaText}>Sign in to track your shots</Text>
+          </View>
+        )}
+
         {/* Quick Settings */}
         <View style={styles.settings}>
           <GameTypeSelector />
@@ -27,11 +65,27 @@ export default function HomeScreen() {
 
         {/* CTA */}
         <TouchableOpacity style={styles.ctaButton} onPress={handleStart}>
-          <Text style={styles.ctaText}>Take a Shot</Text>
+          <Text style={styles.ctaText}>
+            {user ? 'Take a Shot' : 'Sign In to Start'}
+          </Text>
         </TouchableOpacity>
 
+        {/* Auth buttons */}
+        {user ? (
+          <TouchableOpacity style={styles.authButton} onPress={handleSignOut}>
+            <Text style={styles.authButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.authButton}
+            onPress={() => router.push('/signup')}
+          >
+            <Text style={styles.authButtonText}>Create Account — Free</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Footer */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.settingsGear}
           onPress={() => router.push('/settings')}
         >
@@ -46,7 +100,7 @@ export default function HomeScreen() {
 
 function GameTypeSelector() {
   const { gameType, setGameType } = useShotStore();
-  
+
   const options = [
     { value: '8ball', label: '8-Ball' },
     { value: '9ball', label: '9-Ball' },
@@ -83,7 +137,7 @@ function GameTypeSelector() {
 
 function SkillLevelSelector() {
   const { skillLevel, setSkillLevel } = useShotStore();
-  
+
   const options = [
     { value: 'beginner', label: 'Beginner' },
     { value: 'intermediate', label: 'Intermediate' },
@@ -131,7 +185,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
   },
   logo: {
     fontSize: 72,
@@ -148,12 +202,39 @@ const styles = StyleSheet.create({
     color: '#8B949E',
     marginTop: 4,
   },
+  userBanner: {
+    width: '100%',
+    backgroundColor: '#161B22',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#30363D',
+    alignItems: 'center',
+  },
+  userEmail: {
+    fontSize: 13,
+    color: '#8B949E',
+    marginBottom: 2,
+  },
+  quotaText: {
+    fontSize: 13,
+    color: '#D29922',
+    fontWeight: '500',
+  },
+  tierBadge: {
+    fontSize: 13,
+    color: '#58A6FF',
+    fontWeight: '600',
+    marginTop: 2,
+  },
   settings: {
     width: '100%',
-    marginBottom: 48,
+    marginBottom: 32,
   },
   selector: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   selectorLabel: {
     fontSize: 12,
@@ -194,12 +275,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 64,
     borderRadius: 12,
     width: '100%',
+    marginBottom: 12,
   },
   ctaText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#FFFFFF',
     textAlign: 'center',
+  },
+  authButton: {
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  authButtonText: {
+    fontSize: 14,
+    color: '#58A6FF',
+    fontWeight: '500',
   },
   settingsGear: {
     position: 'absolute',

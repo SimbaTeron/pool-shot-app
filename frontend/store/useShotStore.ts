@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { UserProfile } from '../services/supabase';
 
 export type GameType = '8ball' | '9ball' | 'straight';
 export type SkillLevel = 'beginner' | 'intermediate' | 'pro';
@@ -28,6 +29,10 @@ export interface ShotData {
 }
 
 interface ShotStore {
+  // Auth
+  user: any | null;
+  profile: UserProfile | null;
+  
   // Settings
   gameType: GameType;
   skillLevel: SkillLevel;
@@ -41,6 +46,8 @@ interface ShotStore {
   diagramSvg: string | null;
   
   // Actions
+  setUser: (user: any | null) => void;
+  setProfile: (profile: UserProfile | null) => void;
   setGameType: (type: GameType) => void;
   setSkillLevel: (level: SkillLevel) => void;
   setTableSize: (size: TableSize) => void;
@@ -54,6 +61,8 @@ interface ShotStore {
 
 export const useShotStore = create<ShotStore>((set) => ({
   // Defaults
+  user: null,
+  profile: null,
   gameType: '8ball',
   skillLevel: 'intermediate',
   tableSize: '9ft',
@@ -63,6 +72,8 @@ export const useShotStore = create<ShotStore>((set) => ({
   shotData: null,
   diagramSvg: null,
 
+  setUser: (user) => set({ user }),
+  setProfile: (profile) => set({ profile }),
   setGameType: (type) => set({ gameType: type }),
   setSkillLevel: (level) => set({ skillLevel: level }),
   setTableSize: (size) => set({ tableSize: size }),

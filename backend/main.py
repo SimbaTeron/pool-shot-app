@@ -232,17 +232,57 @@ async def detect_and_calculate(request: DetectRequest):
             request.table_size
         )
         
-        # Step 3: Warp ball positions to top-down view
+        # Step 3: Warp ball positions to top-down view (if homography is valid)
+        # Use image dimensions as output space if homography may be unreliable
+        img_height, img_width = 400, 800  # normalized to table aspect ratio
+        height, width = 400, 800
+        
+        if H is not None:
+            # Validate homography: check that corner aspect ratio closely matches table (2:1)
+            # and that corners are reasonably sized (at least 40% of image)
+            corners = detection["table_corners"]
+            if len(corners) == 4:
+                xs = [c["x"] for c in corners]
+                ys = [c["y"] for c in corners]
+                detected_width = max(xs) - min(xs)
+                detected_height = max(ys) - min(ys)
+                img_height_d, img_width_d = 686, 1199  # approximate from decode
+                if detected_height > 0:
+                    detected_aspect = detected_width / detected_height
+                    width_ratio = detected_width / img_width_d
+                    height_ratio = detected_height / img_height_d
+                    # Require aspect ratio 1.8-2.2 AND corners at least 40% of image
+                    if not (1.8 <= detected_aspect <= 2.2 and width_ratio >= 0.4 and height_ratio >= 0.4):
+                        H = None
+        
         if H is not None:
             warped_balls = warp_balls(detection["balls"], H)
             warped_cue = None
             if detection["cue_ball"]:
-                from homography.perspective import warp_ball
-                warped_cue = warp_ball(detection["cue_ball"], H)
+                from homography.perspective import warp_ball as wb
+                warped_cue = wb(detection["cue_ball"], H)
         else:
-            warped_balls = detection["balls"]
-            warped_cue = detection["cue_ball"]
-            output_w, output_h = 800, 400
+            # No reliable homography: use original image coordinates
+            # Scale balls to a normalized table space (800x400 for 9ft, 780x390 for 7ft)
+            height, width = 400, 800
+            scale_x = width / 1200  # approximate image width
+            scale_y = height / 700  # approximate image height
+            warped_balls = []
+            for b in detection["balls"]:
+                warped_balls.append({
+                    **b,
+                    "x": b["x"] * scale_x,
+                    "y": b["y"] * scale_y
+                })
+            warped_cue = None
+            if detection["cue_ball"]:
+                cb = detection["cue_ball"]
+                warped_cue = {
+                    **cb,
+                    "x": cb["x"] * scale_x,
+                    "y": cb["y"] * scale_y
+                }
+            output_w, output_h = width, height
         
         # Step 4: Get pocket positions in warped space
         from homography.perspective import POCKET_POSITIONS

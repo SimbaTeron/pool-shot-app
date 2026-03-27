@@ -49,19 +49,19 @@ SKILL_ADJUSTMENTS = {
         "ghost_ball_offset": 0.3,  # Larger ghost ball (easier hit)
         "max_english": 0.3,       # Limited English
         "min_power": 0.4,
-        "preferred_angle_range": (30, 60)  # Prefer medium angles
+        "preferred_angle_range": (20, 65)  # Prefer medium cuts (20-65°)
     },
     "intermediate": {
         "ghost_ball_offset": 0.15,
         "max_english": 0.6,
         "min_power": 0.3,
-        "preferred_angle_range": (15, 75)
+        "preferred_angle_range": (5, 80)  # Allow thin cuts and nearly straight (5-80°)
     },
     "pro": {
         "ghost_ball_offset": 0.0,  # Precise
         "max_english": 1.0,
         "min_power": 0.1,
-        "preferred_angle_range": (5, 85)
+        "preferred_angle_range": (0, 89)  # Nearly any cut angle (0-89°)
     }
 }
 
@@ -193,6 +193,11 @@ def score_shot(
     cue_angle = math.atan2(dy_obj, dx_obj)
     pocket_angle = math.atan2(dy_pocket, dx_pocket)
     angle_diff = abs(cue_angle - pocket_angle)
+    # Normalize to [0, pi] — angles > 180° get wrapped
+    if angle_diff > math.pi:
+        angle_diff = 2 * math.pi - angle_diff
+    # shot_angle: degrees of required ball deflection (small = thin cut)
+    shot_angle = angle_diff * (180 / math.pi)
     
     # Ghost ball position (where cue ball needs to be for center-to-center contact)
     # Ghost ball is offset in the direction of the pocket
@@ -204,9 +209,7 @@ def score_shot(
         "y": object_ball["y"] + offset_y
     }
     
-    # Calculate the shot angle (deviation from straight line)
-    # 180 degrees = straight in, lower angles = more cut
-    shot_angle = angle_diff * (180 / math.pi) if angle_diff else 180
+    # shot_angle already computed above (angle_diff * 180/pi, capped at pi)
     
     # Check if shot angle is within acceptable range for skill level
     min_angle, max_angle = skill["preferred_angle_range"]
@@ -214,7 +217,11 @@ def score_shot(
         return None
     
     # Check if object ball can fit in pocket (cut angle limit)
-    max_cut_angle = 90 - (POCKET_DIAMETER_CORNER / BALL_DIAMETER) * 90 / 2
+    # Corner pocket: ball can enter at up to ~67° off-center
+    # Side pocket: ball can enter at up to ~75° off-center
+    max_cut_angle = 67.5
+    if "middle" in pocket.get("name", ""):
+        max_cut_angle = 75.0
     if shot_angle > max_cut_angle:
         return None
     

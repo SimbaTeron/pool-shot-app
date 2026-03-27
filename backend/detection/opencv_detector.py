@@ -1,6 +1,6 @@
 """
 OpenCV-based pool ball detector.
-Uses HSV color segmentation + Hough circle detection.
+Uses Hough circle detection + HSV color classification.
 """
 
 import cv2
@@ -10,48 +10,30 @@ from typing import List, Dict, Tuple, Optional
 
 # Pool ball colors in HSV (H: 0-180 in OpenCV)
 BALL_COLOR_RANGES = {
-    "cue": {"lower": (0, 0, 150), "upper": (30, 60, 255)},
-    "solid1": {"lower": (0, 100, 100), "upper": (10, 255, 255)},   # Yellow
-    "solid2": {"lower": (100, 100, 50), "upper": (130, 255, 255)}, # Blue
-    "solid3": {"lower": (0, 100, 50), "upper": (30, 255, 255)},    # Red
-    "solid4": {"lower": (130, 80, 50), "upper": (170, 255, 255)}, # Purple
-    "solid5": {"lower": (15, 100, 50), "upper": (45, 255, 255)}, # Orange
-    "solid6": {"lower": (75, 80, 50), "upper": (95, 255, 255)},   # Green
-    "solid7": {"lower": (0, 50, 30), "upper": (20, 150, 150)},   # Maroon/Brown
-    "solid8": {"lower": (0, 0, 0), "upper": (180, 255, 30)},     # Black (8-ball)
-    "stripe9": {"lower": (100, 100, 50), "upper": (130, 255, 255)}, # Blue stripe
-    "stripe10": {"lower": (0, 100, 100), "upper": (10, 255, 255)}, # Yellow stripe
-    "stripe11": {"lower": (0, 100, 50), "upper": (30, 255, 255)}, # Red stripe
-    "stripe12": {"lower": (130, 80, 50), "upper": (170, 255, 255)}, # Purple stripe
-    "stripe13": {"lower": (15, 100, 50), "upper": (45, 255, 255)}, # Orange stripe
-    "stripe14": {"lower": (75, 80, 50), "upper": (95, 255, 255)}, # Green stripe
-    "stripe15": {"lower": (0, 50, 30), "upper": (20, 150, 150)}, # Maroon stripe
+    "cue": {"lower": (0, 0, 80), "upper": (180, 55, 255)},
+    "solid1": {"lower": (15, 40, 80), "upper": (35, 255, 255)},   # Yellow
+    "solid2": {"lower": (85, 30, 50), "upper": (135, 255, 255)}, # Blue
+    "solid3": {"lower": (0, 50, 60), "upper": (15, 255, 255)},    # Red
+    "solid4": {"lower": (130, 30, 50), "upper": (170, 255, 255)}, # Purple
+    "solid5": {"lower": (5, 50, 60), "upper": (25, 255, 255)},   # Orange
+    "solid6": {"lower": (45, 40, 50), "upper": (80, 255, 255)},  # Green
+    "solid7": {"lower": (0, 30, 30), "upper": (20, 200, 150)},   # Maroon/Brown
+    "solid8": {"lower": (0, 0, 0), "upper": (180, 80, 80)},      # Black (8-ball)
+    "stripe9":  {"lower": (85, 30, 50), "upper": (135, 255, 255)}, # Blue stripe
+    "stripe10": {"lower": (15, 40, 80), "upper": (35, 255, 255)}, # Yellow stripe
+    "stripe11": {"lower": (0, 50, 60), "upper": (15, 255, 255)}, # Red stripe
+    "stripe12": {"lower": (130, 30, 50), "upper": (170, 255, 255)}, # Purple stripe
+    "stripe13": {"lower": (5, 50, 60), "upper": (25, 255, 255)}, # Orange stripe
+    "stripe14": {"lower": (45, 40, 50), "upper": (80, 255, 255)}, # Green stripe
+    "stripe15": {"lower": (0, 30, 30), "upper": (20, 200, 150)}, # Maroon stripe
 }
-
-# Pocket positions relative to table dimensions (2:1 ratio)
-# Order: top-left, top-right, middle-left, middle-right, bottom-left, bottom-right
-POCKET_POSITIONS = [
-    (0.05, 0.05),   # Top-left corner
-    (0.95, 0.05),   # Top-right corner
-    (0.0, 0.5),     # Middle-left
-    (1.0, 0.5),     # Middle-right
-    (0.05, 0.95),   # Bottom-left corner
-    (0.95, 0.95),   # Bottom-right corner
-]
 
 
 def detect_balls(image_bytes: bytes, table_size: str = "9ft") -> Dict:
     """
     Detect pool balls in an image.
-    
-    Args:
-        image_bytes: Raw JPEG image bytes
-        table_size: "7ft" or "9ft" (affects expected ball diameter range)
-    
-    Returns:
-        Dict with balls, table_corners, cue_ball, confidence
+    Uses Hough circles to find circular objects, then classifies by color.
     """
-    # Decode image
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
@@ -61,130 +43,132 @@ def detect_balls(image_bytes: bytes, table_size: str = "9ft") -> Dict:
     height, width = img.shape[:2]
     
     # Ball diameter range in pixels (based on table size)
-    # 7ft: ~78" table, 9ft: ~100" table
     if table_size == "7ft":
         expected_ball_px = min(width, height) * 0.035
     else:
         expected_ball_px = min(width, height) * 0.028
     
-    min_radius = int(expected_ball_px * 0.85)
-    max_radius = int(expected_ball_px * 1.2)
+    min_radius = int(expected_ball_px * 0.6)
+    max_radius = int(expected_ball_px * 1.3)
     
     # Preprocess
     blurred = cv2.GaussianBlur(img, (9, 9), 2)
+    gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
     
+    # Step 1: Find all circular objects using Hough transform
+    circles = cv2.HoughCircles(
+        gray, cv2.HOUGH_GRADIENT, 1, 30,
+        param1=50, param2=25,
+        minRadius=min_radius, maxRadius=max_radius
+    )
+    
     detected_balls = []
-    detected_corners = []
+    cue_ball = None
     
-    # Detect cue ball first (white, most reflective)
-    cue_mask = create_cue_ball_mask(hsv)
-    cue_ball = find_ball_in_mask(cue_mask, hsv, min_radius, max_radius, "cue")
-    if cue_ball:
-        detected_balls.append(cue_ball)
+    if circles is not None:
+        for circle in circles[0]:
+            cx, cy, r = circle
+            
+            # Sample color at circle center
+            x, y = int(cx), int(cy)
+            if not (0 <= x < width and 0 <= y < height):
+                continue
+            
+            # Get HSV at center pixel
+            h, s, v = hsv[y, x]
+            
+            # Classify by color
+            color, number = classify_ball_hsv(h, s, v)
+            
+            ball = {
+                "x": float(cx),
+                "y": float(cy),
+                "radius": float(r),
+                "color": color,
+                "number": number
+            }
+            detected_balls.append(ball)
+            
+            if color == "cue":
+                cue_ball = ball
     
-    # Detect colored balls
-    for color_name, ranges in BALL_COLOR_RANGES.items():
-        if color_name == "cue":
-            continue
-        mask = cv2.inRange(hsv, np.array(ranges["lower"]), np.array(ranges["upper"]))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-        balls = find_balls_in_mask(mask, hsv, min_radius, max_radius, color_name)
-        detected_balls.extend(balls)
-    
-    # Remove duplicates (balls detected in multiple color ranges)
+    # Remove duplicates (same position)
     detected_balls = deduplicate_balls(detected_balls, min_radius * 0.5)
     
-    # Find cue ball in final list
-    cue_ball_result = next((b for b in detected_balls if b["color"] == "cue"), None)
+    # Re-find cue ball after deduplication
+    cue_ball = next((b for b in detected_balls if b["color"] == "cue"), None)
     
     # Detect table corners
     detected_corners = detect_table_corners(img)
     
-    # Calculate confidence based on ball count and detection quality
+    # Calculate confidence
     confidence = calculate_detection_confidence(detected_balls, detected_corners, width, height)
     
     return {
         "balls": detected_balls,
         "table_corners": detected_corners,
-        "cue_ball": cue_ball_result,
+        "cue_ball": cue_ball,
         "detection_confidence": confidence
     }
 
 
-def create_cue_ball_mask(hsv: np.ndarray) -> np.ndarray:
-    """Create a mask for the cue ball (white/cream colored)."""
-    # White/cream range - cue balls are slightly off-white
-    lower_white = np.array([0, 0, 150])
-    upper_white = np.array([30, 40, 255])
-    mask = cv2.inRange(hsv, lower_white, upper_white)
+def classify_ball_hsv(h: int, s: int, v: int) -> Tuple[str, Optional[int]]:
+    """
+    Classify a ball based on its HSV color at center.
+    Returns (color_name, ball_number).
+    """
+    # Cue ball: low saturation, high value (white/cream)
+    if s < 60 and v > 70:
+        return ("cue", None)
     
-    # Also check for very bright areas (reflections)
-    lower_bright = np.array([0, 0, 200])
-    upper_bright = np.array([180, 30, 255])
-    bright_mask = cv2.inRange(hsv, lower_bright, upper_bright)
+    # Black (8-ball): very low value, low saturation
+    if v < 80 and s < 80:
+        return ("solid8", 8)
     
-    return cv2.bitwise_or(mask, bright_mask)
-
-
-def find_ball_in_mask(mask: np.ndarray, hsv: np.ndarray, min_radius: int, max_radius: int, color: str) -> Optional[Dict]:
-    """Find a single ball in a mask (used for cue ball)."""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Maroon/Brown (6 and 14): low saturation, dark
+    if s < 60 and 30 <= v < 150:
+        # Could be maroon or dark yellow - check hue
+        if 0 <= h <= 20 or h >= 160:
+            return ("solid7", 7)
+        elif 45 <= h <= 80:
+            return ("solid14", 14)
     
-    if not contours:
-        return None
+    # Color mapping by hue range
+    # Yellow (1, 9): H 15-35
+    if 10 <= h <= 40 and s >= 40:
+        return ("solid1", 1)
     
-    # Find largest contour
-    largest = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(largest)
+    # Blue (2, 9): H 85-135
+    if 80 <= h <= 140 and s >= 30:
+        return ("solid2", 2)
     
-    if area < (min_radius ** 2) * 0.5:
-        return None
+    # Red (3, 11): H 0-15 or 160-180
+    if (h <= 15 or h >= 160) and s >= 50:
+        return ("solid3", 3)
     
-    # Fit circle
-    ((x, y), radius) = cv2.minEnclosingCircle(largest)
+    # Purple (4, 12): H 130-170
+    if 125 <= h <= 175 and s >= 30:
+        return ("solid4", 4)
     
-    if min_radius <= radius <= max_radius:
-        return {
-            "x": float(x),
-            "y": float(y),
-            "radius": float(radius),
-            "color": color,
-            "number": None
-        }
+    # Orange (5, 13): H 5-25 (between red and yellow)
+    if 5 <= h <= 30 and s >= 50:
+        return ("solid5", 5)
     
-    return None
-
-
-def find_balls_in_mask(mask: np.ndarray, hsv: np.ndarray, min_radius: int, max_radius: int, color: str) -> List[Dict]:
-    """Find multiple balls in a mask (used for colored balls)."""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Green (6, 14): H 45-80
+    if 40 <= h <= 85 and s >= 40:
+        return ("solid6", 6)
     
-    balls = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        
-        if area < (min_radius ** 2) * 0.5:
-            continue
-        
-        ((x, y), radius) = cv2.minEnclosingCircle(contour)
-        
-        if min_radius <= radius <= max_radius:
-            # Determine ball number from color
-            number = color_name_to_number(color)
-            balls.append({
-                "x": float(x),
-                "y": float(y),
-                "radius": float(radius),
-                "color": color,
-                "number": number
-            })
+    # Unknown - return as gray/white
+    if s < 40:
+        return ("cue", None)
     
-    return balls
+    # Fallback
+    return ("solid1", 1)
 
 
 def deduplicate_balls(balls: List[Dict], min_distance: float) -> List[Dict]:
-    """Remove balls that are too close to each other (likely duplicates)."""
+    """Remove balls that are too close to each other."""
     if not balls:
         return []
     
@@ -202,37 +186,19 @@ def deduplicate_balls(balls: List[Dict], min_distance: float) -> List[Dict]:
     return unique
 
 
-def color_name_to_number(color: str) -> Optional[int]:
-    """Map color name to ball number."""
-    mapping = {
-        "solid1": 1, "solid2": 2, "solid3": 3, "solid4": 4,
-        "solid5": 5, "solid6": 6, "solid7": 7, "solid8": 8,
-        "stripe9": 9, "stripe10": 10, "stripe11": 11, "stripe12": 12,
-        "stripe13": 13, "stripe14": 14, "stripe15": 15,
-        "cue": None
-    }
-    return mapping.get(color)
-
-
 def detect_table_corners(img: np.ndarray) -> List[Dict[str, float]]:
     """
     Detect table corners using edge detection and Hough lines.
-    Returns the 4 corner points of the table.
     """
     height, width = img.shape[:2]
     
-    # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # Apply Canny edge detection
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blurred, 50, 150)
     
-    # Detect lines using HoughLinesP
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=20)
     
     if lines is None or len(lines) < 4:
-        # Fallback: return image corners as approximate table corners
         return [
             {"x": float(width * 0.1), "y": float(height * 0.1)},
             {"x": float(width * 0.9), "y": float(height * 0.1)},
@@ -240,7 +206,6 @@ def detect_table_corners(img: np.ndarray) -> List[Dict[str, float]]:
             {"x": float(width * 0.9), "y": float(height * 0.9)}
         ]
     
-    # Find the 4 most prominent horizontal and vertical lines
     horizontal_lines = []
     vertical_lines = []
     
@@ -248,9 +213,9 @@ def detect_table_corners(img: np.ndarray) -> List[Dict[str, float]]:
         x1, y1, x2, y2 = line[0]
         angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi)
         
-        if angle < 10 or angle > 170:  # Nearly horizontal
+        if angle < 10 or angle > 170:
             horizontal_lines.append((y1 + y2) / 2)
-        elif 80 < angle < 100:  # Nearly vertical
+        elif 80 < angle < 100:
             vertical_lines.append((x1 + x2) / 2)
     
     if not horizontal_lines or not vertical_lines:
@@ -261,7 +226,6 @@ def detect_table_corners(img: np.ndarray) -> List[Dict[str, float]]:
             {"x": float(width * 0.9), "y": float(height * 0.9)}
         ]
     
-    # Get median positions
     horizontal_lines.sort()
     vertical_lines.sort()
     
@@ -283,14 +247,9 @@ def calculate_detection_confidence(balls: List[Dict], corners: List[Dict], img_w
     if not balls:
         return 0.0
     
-    # Base confidence from number of balls detected
-    # A full rack has 16 balls (1 cue + 15 object)
     ball_count_score = min(len(balls) / 10, 1.0) * 0.5
-    
-    # Confidence from table corner detection
     corner_score = min(len(corners) / 4, 1.0) * 0.3
     
-    # Confidence from ball distribution (should be spread across the table)
     if len(balls) >= 2:
         xs = [b["x"] for b in balls]
         ys = [b["y"] for b in balls]

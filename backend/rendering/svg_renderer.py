@@ -4,6 +4,7 @@ Generates clean, professional shot overlays using programmatic SVG.
 """
 
 from typing import Dict, List, Optional
+import numpy as np
 
 
 # Color palette
@@ -462,8 +463,9 @@ def _render_shot_info(shot_data: Dict, width: int, height: int) -> str:
     x = 30
     y = 35
     
+    pocket_label = target_pocket.replace('_', ' ').title() if target_pocket else "—"
     info = f'''<text x="{x}" y="{y}" font-family="Inter, sans-serif" font-size="13" 
-    fill="{COLORS['text_primary']}" font-weight="600">Ball {target_ball} → {target_pocket.replace('_', ' ').title()}</text>'''
+    fill="{COLORS['text_primary']}" font-weight="600">Ball {target_ball} → {pocket_label}</text>'''
     
     return info
 
@@ -503,5 +505,3 @@ def _get_animations() -> str:
     </style>'''
 
 
-# Need numpy for the arc calculation
-import numpy as np

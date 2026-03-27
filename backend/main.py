@@ -293,8 +293,8 @@ async def detect_and_calculate(request: DetectRequest):
 
 @app.on_event("startup")
 async def startup():
-    print("🎱 Pool Shot App API starting...")
-    print("📍 Endpoints:")
+    print("[Pool Shot App API] Starting...")
+    print("Endpoints:")
     print("   GET  /              - Health check")
     print("   POST /detect        - Detect balls in image")
     print("   POST /calculate-shot - Calculate optimal shot")

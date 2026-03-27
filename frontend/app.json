@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Pool Shot App",
+    "slug": "pool-shot-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0D1117",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.poolshotapp.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pool Shot App needs camera access to photograph your pool table and analyze shots."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D1117"
+      },
+      "package": "com.poolshotapp.app",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Pool Shot App needs camera access to photograph your pool table."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "pool-shot-app"
+      }
+    }
+  }
+}

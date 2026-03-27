@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+.expo-shared/
+dist/
+build/
+*.egg-info/
+__pycache__/
+venv/
+.env
+.DS_Store
+*.ipa
+*.apk

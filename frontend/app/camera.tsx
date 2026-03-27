@@ -211,7 +211,7 @@ function AngleOverlay({ angle, isGood }: { angle: number; isGood: boolean }) {
             ? '📐 Raise your camera (too low)'
             : '📐 Lower your camera (too high)'}
         </Text>
-      </Text>
+      </View>
     </View>
   );
 }

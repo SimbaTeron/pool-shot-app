@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { router } from 'expo-router';
-import Svg, { Circle, Path, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Path, Rect, Text as SvgText, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { useShotStore } from '../store/useShotStore';
 
 const { width } = Dimensions.get('window');
@@ -99,12 +99,15 @@ export default function DiagramScreen() {
             </Defs>
 
             {/* Table felt */}
-            <Path
-              d={`M 16 16 L ${svgWidth - 16} 16 L ${svgWidth - 16} ${svgHeight - 16} L 16 ${svgHeight - 16} Z`}
+            <Rect
+              x="16"
+              y="16"
+              width={svgWidth - 32}
+              height={svgHeight - 32}
+              rx="8"
               fill="#0A4D2E"
               stroke="#4A3728"
               strokeWidth="8"
-              rx="8"
             />
 
             {/* Pockets */}

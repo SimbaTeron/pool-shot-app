@@ -67,7 +67,11 @@ export default function ProcessingScreen() {
 
       // Store results
       setDetectedBalls(result.detection.balls);
-      setCueBall(result.detection.cue_ball);
+      setCueBall(result.detection.cue_ball ? {
+        ...result.detection.cue_ball,
+        color: 'cue',
+        number: null
+      } : null);
       setShotData(result.shot);
       setDiagramSvg(result.diagram_svg);
 
